@@ -13,6 +13,7 @@
     "preview": "pnpm --filter web preview",
     "test": "pnpm --filter web test",
     "typecheck": "pnpm --filter web typecheck",
-    "firmware:publish": "node scripts/publish-firmware.mjs"
+    "firmware:publish": "node scripts/publish-firmware.mjs",
+    "cf:deploy": "pnpm --filter web cf:deploy"
   }
 }

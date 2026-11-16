@@ -1,0 +1,129 @@
+// carol-keyring Worker: /api/* 만 여기로 온다. 나머지(웹, 펌웨어 파일)는 정적 파일로 바로 나간다.
+//
+// GET /api/profile/{handle}?region=intl
+//   maishift 의 공개 프로필을 대신 받아 준다. API 키는 브라우저에 보내지 않고 Worker 비밀값(MAISHIFT_API_KEY)으로 둔다.
+//   같은 프로필은 5분 동안 캐시해서 maishift 호출 한도(앱 전체 120, 초당 2 회복)를 아낀다.
+//
+// GET /api/profile/{handle}/icon?region=intl
+//   그 프로필의 아이콘 이미지를 그대로 넘겨 준다. 아이콘은 SEGA 서버(maimaidx-eng.com)에 있는데 CORS 헤더가 없어서
+//   브라우저가 픽셀을 읽지 못한다(4색 디더링을 못 한다). 같은 주소로 넘겨 주면 읽을 수 있다.
+//   아무 주소나 받아 주는 프록시가 되지 않게 프로필의 iconUrl 만, 정해진 호스트·경로일 때만 받는다.
+//   Worker 쪽에는 저장하거나 캐시하지 않는다 (maishift 약관: SEGA 이미지 재호스팅 금지에 걸리지 않게).
+//
+// 오류는 { "error": "<사용자에게 보여 줄 문장>" } 와 알맞은 HTTP 상태로 돌려준다.
+
+import { ICON_MAX_BYTES, isAllowedIconUrl } from '../src/iconUrl.ts';
+import type { ProfileResponse, Region } from '../src/maishift.ts';
+
+type WorkerEnv = Env & {
+  /** maishift Settings > Developer 에서 발급. 로컬은 .dev.vars, 배포는 wrangler secret put */
+  MAISHIFT_API_KEY?: string;
+};
+
+const MAISHIFT_ORIGIN = 'https://maimai.shiftpsh.com';
+const PROFILE_CACHE_SECONDS = 300;
+const REGIONS: readonly Region[] = ['intl', 'jp', 'na'];
+
+
+function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers },
+  });
+}
+
+function error(status: number, message: string, headers: HeadersInit = {}): Response {
+  return json({ error: message }, status, headers);
+}
+
+/** 프로필을 캐시나 maishift 에서 가져온다. 실패하면 그대로 돌려줄 오류 응답을 준다. */
+async function loadProfile(
+  handle: string,
+  region: Region,
+  env: WorkerEnv,
+  ctx: ExecutionContext,
+): Promise<{ data: ProfileResponse; cache: 'HIT' | 'MISS' } | { response: Response }> {
+  const apiKey = env.MAISHIFT_API_KEY;
+  if (!apiKey) return { response: error(503, '서버에 maishift API 키가 설정되지 않았습니다.') };
+
+  // 캐시 키는 실제로 열리지 않는 내부 주소다. 핸들은 대소문자를 구분하지 않는다고 보고 소문자로 맞춘다.
+  const cacheKey = new Request(
+    `https://cache.carol-keyring.internal/profile/${region}/${encodeURIComponent(handle.toLowerCase())}`,
+  );
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return { data: (await cached.json()) as ProfileResponse, cache: 'HIT' };
+
+  const upstream = await fetch(`${MAISHIFT_ORIGIN}/api/v1/profiles/${encodeURIComponent(handle)}?region=${region}`, {
+    headers: { 'X-API-Key': apiKey, accept: 'application/json', 'user-agent': 'carol-keyring' },
+  });
+
+  if (upstream.status === 404) {
+    return {
+      response: error(404, '프로필을 찾을 수 없습니다. 핸들이 맞는지, maishift 에서 프로필을 공개했는지 확인해 주세요.'),
+    };
+  }
+  if (upstream.status === 403) return { response: error(403, '이 프로필은 공개되어 있지 않습니다.') };
+  if (upstream.status === 429) {
+    const retryAfter = upstream.headers.get('retry-after') ?? '60';
+    return {
+      response: error(429, `요청이 너무 많습니다. ${retryAfter}초 뒤에 다시 시도해 주세요.`, { 'retry-after': retryAfter }),
+    };
+  }
+  if (upstream.status === 401) return { response: error(502, '서버의 maishift API 키가 올바르지 않습니다.') };
+  if (!upstream.ok) return { response: error(502, `maishift 가 응답하지 않습니다 (HTTP ${upstream.status}).`) };
+
+  const raw = (await upstream.json()) as ProfileResponse;
+  // 화면에 쓰는 필드만 남긴다.
+  const data: ProfileResponse = { handle: raw.handle, region: raw.region, regions: raw.regions, profile: raw.profile };
+  ctx.waitUntil(
+    cache.put(
+      cacheKey,
+      new Response(JSON.stringify(data), {
+        headers: { 'content-type': 'application/json', 'cache-control': `max-age=${PROFILE_CACHE_SECONDS}` },
+      }),
+    ),
+  );
+  return { data, cache: 'MISS' };
+}
+
+async function getIcon(data: ProfileResponse): Promise<Response> {
+  const url = data.profile.iconUrl;
+  if (!isAllowedIconUrl(url)) return error(404, '받을 수 없는 아이콘 주소입니다.');
+
+  const upstream = await fetch(url, { headers: { 'user-agent': 'carol-keyring' } });
+  if (!upstream.ok) return error(502, `아이콘을 받지 못했습니다 (HTTP ${upstream.status}).`);
+  const type = upstream.headers.get('content-type') ?? '';
+  if (!type.startsWith('image/')) return error(502, '아이콘이 이미지가 아닙니다.');
+  const bytes = await upstream.arrayBuffer();
+  if (bytes.byteLength > ICON_MAX_BYTES) return error(502, '아이콘 파일이 너무 큽니다.');
+
+  return new Response(bytes, {
+    headers: { 'content-type': type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
+  });
+}
+
+export default {
+  async fetch(request, env, ctx): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method !== 'GET') return error(405, 'GET 만 지원합니다.', { allow: 'GET' });
+
+    const match = /^\/api\/profile\/([^/]+)(\/icon)?$/.exec(url.pathname);
+    if (!match) return error(404, '없는 API 입니다.');
+
+    const handle = decodeURIComponent(match[1]).trim();
+    if (handle.length < 1 || handle.length > 32) return error(400, '핸들은 1~32자입니다.');
+    const region = (url.searchParams.get('region') ?? 'intl') as Region;
+    if (!REGIONS.includes(region)) return error(400, `region 은 ${REGIONS.join(', ')} 중 하나입니다.`);
+
+    try {
+      const result = await loadProfile(handle, region, env, ctx);
+      if ('response' in result) return result.response;
+      if (match[2]) return await getIcon(result.data);
+      return json(result.data, 200, { 'x-cache': result.cache });
+    } catch (cause) {
+      console.error('profile', cause);
+      return error(502, 'maishift 에 연결하지 못했습니다.');
+    }
+  },
+} satisfies ExportedHandler<WorkerEnv>;

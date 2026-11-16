@@ -1,9 +1,10 @@
 packages:
   - web
 
-# 설치 스크립트를 돌려도 되는 의존성 (Vite 가 쓰는 esbuild 바이너리 확인)
+# 설치 스크립트를 돌려도 되는 의존성 (Vite 의 esbuild, Cloudflare Worker 런타임 workerd 의 바이너리 확인)
 allowBuilds:
   esbuild: true
+  workerd: true
 
 minimumReleaseAgeExclude:
   - '@team-carol/design-system@0.1.1'

@@ -10,17 +10,34 @@ BLE 프로토콜은 [`../docs/protocol.md`](../docs/protocol.md) 참고.
 
 ```sh
 pnpm install                     # 의존성 설치
-pnpm dev                         # http://localhost:5173
+cp web/.dev.vars.example web/.dev.vars   # maishift API 키를 채운다 (프로필 받기에 필요)
+pnpm dev                         # http://localhost:5173 (웹 + Worker)
 ```
 
 pnpm 이 없으면 `npx pnpm@12.17.0 install` 처럼 앞에 `npx pnpm@12.17.0` 을 붙여도 된다.
 
 | 명령 | 내용 |
 |---|---|
-| `pnpm dev` | 개발 서버 (localhost) |
-| `pnpm build` | 타입 검사 + `web/dist` 에 정적 파일 빌드 |
-| `pnpm test` | 프로토콜 인코딩 테스트 (`node --test`) |
+| `pnpm dev` | 개발 서버. 웹과 Worker(`/api`)를 같이 띄운다 |
+| `pnpm build` | 타입 검사(웹 + Worker) + 빌드 (`web/dist/client` 웹, `web/dist/carol_keyring` Worker) |
+| `pnpm test` | 프로토콜·디더링·펌웨어 버전 테스트 (`node --test`) |
 | `pnpm typecheck` | 타입 검사 |
+| `pnpm cf:deploy` | 빌드 후 Cloudflare 에 배포 (`wrangler deploy`) |
+| `pnpm --filter web cf-typegen` | `wrangler.jsonc` 를 바꾼 뒤 Worker 타입(`worker-configuration.d.ts`)을 다시 만든다 |
+
+## 배포 (Cloudflare Worker 하나)
+
+웹(정적 파일)과 API 를 Worker 하나로 같은 주소에서 내보낸다. 설정은 [`wrangler.jsonc`](wrangler.jsonc).
+
+| 경로 | 처리 |
+|---|---|
+| `/api/profile/{handle}?region=intl` | [`worker/index.ts`](worker/index.ts): maishift 공개 프로필을 받아 준다. 5분 캐시 |
+| 그 밖 (`/`, `/assets/*`, `/firmware/*`) | 정적 파일. 없는 경로는 `index.html` |
+
+- maishift API 키는 브라우저로 보내지 않는다. 로컬은 `web/.dev.vars`(git 에 안 올라감), 배포는
+  `pnpm --filter web exec wrangler secret put MAISHIFT_API_KEY`.
+- 처음 배포 전에 `pnpm --filter web exec wrangler login` 으로 Cloudflare 에 로그인한다.
+- 웹에서는 `src/profileApi.ts` 의 `fetchProfile(handle)` 로 부른다.
 
 - `?demo=seeed213_bwry`, `?demo=ws154_e6`: 기기 없이 화면을 둘러본다 (전송은 안 됨).
 - **탭**: 폰(720px 이하)은 화면 아래 탭 막대, 넓은 화면은 상단바 오른쪽 링크.
@@ -68,14 +85,21 @@ src/
 ├─ useFirmwareRelease.ts  연결된 기기에 새 펌웨어가 있는지 확인
 ├─ device.ts           BLE 연결과 전송 (KeyringDevice). 화면과 분리돼 있다
 ├─ protocol.ts         UUID, CRC-32, 프레임 인코딩. DOM 없이 Node 테스트에서도 쓴다
-├─ patterns.ts         테스트 패턴, 단색
+├─ patterns.ts         보낼 화면 목록: 프로필 샘플, 테스트 패턴, 단색
+├─ maishift.ts         maishift 프로필 응답 형식, 단위 이름(真皆伝 …), 레이팅 색 구간
+├─ profileLayout.ts    프로필 화면 그리기 (가로 250×122 / 정사각형 240×240 배치)
+├─ profileSamples.ts   연동 전 샘플 프로필 (레이팅 구간마다 하나)
+├─ sampleIcon.ts       연동 전 샘플 아이콘 (캔버스로 그린 그림)
+├─ dither.ts           오차 확산 디더링 (아이콘을 패널 색으로)
+├─ profileApi.ts       Worker 의 /api/profile 부르기
 ├─ demo.ts             기기 없이 둘러볼 때 쓰는 Info
 ├─ useLog.ts           로그 (개발자 모드가 꺼져 있어도 모아 둔다)
 ├─ useSettings.ts      설정 (개발자 모드)
 ├─ app.css             이 앱에서만 쓰는 스타일 (kr-*)
 └─ components/         AppNav(탭 이동), ConnectCard, DeviceCard, ScreenCard, FirmwareCard,
                        DevModeCard, TransferCard, LogCard, PanelPreview, ProgressBar, Switch, Notice
-test/protocol.test.ts, test/release.test.ts
+test/protocol.test.ts, test/release.test.ts, test/dither.test.ts
+worker/index.ts       Cloudflare Worker (/api)
 ```
 
 ## 모바일 접근성
@@ -88,6 +112,27 @@ test/protocol.test.ts, test/release.test.ts
 - 아이폰 아래 홈 막대와 가로 화면 노치(`safe-area-inset`)만큼 탭 막대를 띄운다.
 - 키보드로 이동할 때 초점 받은 요소가 상단바나 탭 막대에 가리지 않게 `scroll-padding` 을 준다.
 - 움직임 줄이기 설정은 디자인 시스템이 처리한다.
+
+## 프로필 화면
+
+maishift `GET /api/v1/profiles/{handle}` 응답(`profile`)을 Worker(`/api/profile/{handle}`)로 받아 그린다.
+"보낼 화면 → 프로필"에서 maishift 핸들을 넣고 불러오면 "내 프로필"이 되고, 핸들은 이 브라우저에 저장돼 다음에 열 때 바로 불러온다.
+핸들이 없으면 샘플로 본다. 바닥글에 maishift 출처와 비공식 앱 문구를 넣었다 (maishift 개발자 약관).
+
+- 2.13" (250×122): 위에 아이콘·이름·칭호·별/플레이 수/갱신 날짜, 아래에 레이팅 판과 단위·클래스.
+- 1.54" (240×240): 같은 내용을 크게, 맨 아래에 이번 버전 플레이 수.
+- 기본은 흑백이다. 칸은 흰 바탕 + 검정 테두리(레이팅, 칭호, 클래스)와 검정 바탕 + 흰 글자(단위) 두 가지다.
+- 빨강·노랑·초록·파랑이 다 있는 패널(6색)에서만 레이팅 판에 구간 색을 넣는다 (`profileLayout.ts` 의 `ratingPlateStyle`).
+  없는 색은 바탕 + 띠로 나타낸다: 보라 = 파랑 + 빨강 띠, 동 = 빨강 + 노랑 띠, 은 = 검정, 금 = 노랑 + 검정 띠,
+  플래티넘 = 흰색 + 노랑 띠, 무지개 = 검정 바탕에 숫자마다 빨강·노랑·초록.
+  4색(흑백적황)은 11단계를 나눌 수 없어서 흑백으로 둔다. 칭호 판은 어느 패널이든 흑백이다.
+- 웹의 "보낼 화면 → 프로필 (샘플)"에서 레이팅 구간마다 하나씩 있는 샘플 11개를 골라 본다.
+- 게임 이름은 보통 전각(ＣＡＲＯＬ)이라 반각으로 바꿔 그린다.
+- 글자는 따로 그린 뒤 절반 넘게 칠해진 픽셀만 한 색으로 찍는다. 안티앨리어싱 중간색이 엉뚱한 패널 색으로 바뀌지 않게 한다.
+- 화면에서 색은 아이콘에만 쓴다. 아이콘은 가운데를 정사각형으로 잘라 칸 크기로 줄이고, 밝기 범위를 늘리고 중간 밝기를 조금 어둡게(감마 1.15) 한 뒤
+  패널 색 전부(4색)로 오차 확산 디더링한다 (`dither.ts` 의 `enhanceForPanel`, `ditherToPalette`). 이미지가 없으면 이름 첫 글자.
+- 내 프로필은 게임 아이콘(`iconUrl`)을 Worker(`/api/profile/{handle}/icon`)로 받아 그린다. SEGA 서버에 CORS 헤더가 없어서 브라우저가 직접 읽지 못한다.
+  로컬 Worker 런타임은 그 서버와 TLS 연결이 끊겨서, 개발 서버에서는 Vite 의 `/__dev/icon` 이 대신 받는다 (`vite.config.ts`). 샘플은 샘플 그림.
 
 ## 색 고르기
 

@@ -81,7 +81,7 @@ src/
 2. `pio run -e seeed213_bwry` 로 빌드한다.
 3. 저장소 루트에서 `pnpm firmware:publish` 를 실행한다. 빌드된 env 마다 `web/public/firmware/<env>/` 에 .bin 을 복사하고
    `web/public/firmware/manifest.json` 에 버전, 크기, SHA-256 을 적는다. 특정 env 만 올리려면 `pnpm firmware:publish seeed213_bwry`.
-4. 웹을 빌드해서 올린다 (`pnpm build` → `web/dist` 에 펌웨어도 같이 들어간다). 웹과 같은 곳에 있어서 CORS 설정이 필요 없다.
+4. 웹을 배포한다 (`pnpm cf:deploy`. 펌웨어도 웹 정적 파일에 같이 들어간다). 웹과 같은 주소라 CORS 설정이 필요 없다.
 
 웹은 키링의 Info `build` 와 같은 env 의 펌웨어만 보고, 받은 파일의 크기·SHA-256·안의 버전 표시가 manifest 와 맞을 때만 보낸다.
 `web/public/firmware/` 는 빌드 결과물이라 git 에 넣지 않는다.

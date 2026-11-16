@@ -161,6 +161,9 @@
   border: 1px solid var(--crl-border);
   border-radius: var(--crl-radius-control);
 }
+.kr-panel__frame {
+  width: 100%;
+}
 .kr-panel__screen {
   display: block;
   width: 100%;
@@ -278,6 +281,17 @@ details[open] > .kr-log__summary::before {
 }
 .kr-file__pick[aria-disabled="true"] {
   pointer-events: none;
+}
+
+/* maishift 핸들 입력 + 불러오기 버튼. 버튼은 입력 칸 높이에 맞춘다 (도움말 아래로 내려가지 않게 위쪽 정렬). */
+.kr-handle {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: var(--crl-space-3);
+}
+.kr-handle > .crl-btn {
+  margin-top: calc(var(--crl-type-label-size) * 1.5 + var(--crl-space-3));
 }
 
 /* 이름 · 값 목록 */

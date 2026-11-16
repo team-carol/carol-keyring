@@ -3,10 +3,12 @@ import { useCallback, useState } from 'react';
 export interface Settings {
   /** 로그, 프로토콜·빌드 정보, 파일로 펌웨어 올리기 같은 개발용 도구를 보여 준다. */
   devMode: boolean;
+  /** 프로필을 받아 올 maishift 핸들. 비어 있으면 샘플만 보여 준다. */
+  handle: string;
 }
 
 const STORAGE_KEY = 'carol-keyring:settings';
-const DEFAULTS: Settings = { devMode: false };
+const DEFAULTS: Settings = { devMode: false, handle: '' };
 
 // 이 브라우저에만 저장된다. 저장소를 못 쓰는 환경(사생활 보호 모드 등)에서는 기본값으로 동작한다.
 function load(): Settings {

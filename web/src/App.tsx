@@ -158,7 +158,17 @@ export function App() {
             connectCard
           )}
 
-          {info ? <ScreenCard key={info.panel} info={info} device={device} log={log} chunkSize={chunkSize} /> : null}
+          {info ? (
+            <ScreenCard
+              key={info.panel}
+              info={info}
+              device={device}
+              log={log}
+              chunkSize={chunkSize}
+              savedHandle={settings.handle}
+              onHandleSaved={(handle) => updateSettings({ handle })}
+            />
+          ) : null}
         </section>
 
         <section className="kr-page" hidden={tab !== 'device'} aria-labelledby="kr-title-device">
@@ -203,8 +213,13 @@ export function App() {
         </section>
       </main>
 
+      {/* maishift 개발자 약관: 데이터 출처와 비공식 앱임을 밝힌다. */}
       <Footer>
         <span>캐롤 키링</span>
+        <span>
+          프로필 데이터: <a href="https://maimai.shiftpsh.com">maishift</a> · SEGA 와 관계없는 비공식 앱입니다. maimai 는
+          SEGA 의 상표입니다.
+        </span>
       </Footer>
 
       <AppNav variant="bottom" tab={tab} onNavigate={navigate} badges={badges} />
