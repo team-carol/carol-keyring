@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+
+# pnpm firmware:publish 가 만드는 배포용 펌웨어 (빌드 결과물)
+web/public/firmware/

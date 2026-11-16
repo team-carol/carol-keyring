@@ -1,0 +1,18 @@
+{
+  "name": "carol-keyring",
+  "version": "0.1.0",
+  "private": true,
+  "description": "maimai 프로필을 보여 주는 전자잉크 키링 (펌웨어 + 웹)",
+  "packageManager": "pnpm@12.17.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "preview": "pnpm --filter web preview",
+    "test": "pnpm --filter web test",
+    "typecheck": "pnpm --filter web typecheck",
+    "firmware:publish": "node scripts/publish-firmware.mjs"
+  }
+}
