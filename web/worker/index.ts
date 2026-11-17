@@ -18,7 +18,7 @@
 // 오류는 { "error": "<사용자에게 보여 줄 문장>" } 와 알맞은 HTTP 상태로 돌려준다.
 
 import { FIRMWARE_API_PREFIX, MANIFEST_KEY, parseFirmwareKey } from '../src/firmwareStore.ts';
-import { ICON_MAX_BYTES, isAllowedIconUrl } from '../src/iconUrl.ts';
+import { ICON_MAX_BYTES, iconFetchUrls } from '../src/iconUrl.ts';
 import type { ProfileResponse, Region } from '../src/maishift.ts';
 
 type WorkerEnv = Env & {
@@ -93,12 +93,27 @@ async function loadProfile(
   return { data, cache: 'MISS' };
 }
 
-async function getIcon(data: ProfileResponse): Promise<Response> {
-  const url = data.profile.iconUrl;
-  if (!isAllowedIconUrl(url)) return error(404, '받을 수 없는 아이콘 주소입니다.');
+/** 후보 주소를 차례로 시도해서 처음 받은 응답. 모두 실패하면 마지막 실패 이유. */
+async function fetchIconUpstream(urls: string[]): Promise<Response | string> {
+  let reason = '';
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { headers: { 'user-agent': 'carol-keyring' } });
+      if (response.ok) return response;
+      reason = `HTTP ${response.status}`;
+    } catch (cause) {
+      reason = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+  return reason;
+}
 
-  const upstream = await fetch(url, { headers: { 'user-agent': 'carol-keyring' } });
-  if (!upstream.ok) return error(502, `아이콘을 받지 못했습니다 (HTTP ${upstream.status}).`);
+async function getIcon(data: ProfileResponse): Promise<Response> {
+  const urls = iconFetchUrls(data.profile.iconUrl);
+  if (urls.length === 0) return error(404, '받을 수 없는 아이콘 주소입니다.');
+
+  const upstream = await fetchIconUpstream(urls);
+  if (typeof upstream === 'string') return error(502, `아이콘을 받지 못했습니다 (${upstream}).`);
   const type = upstream.headers.get('content-type') ?? '';
   if (!type.startsWith('image/')) return error(502, '아이콘이 이미지가 아닙니다.');
   const bytes = await upstream.arrayBuffer();
