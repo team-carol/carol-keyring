@@ -10,8 +10,14 @@
 //   아무 주소나 받아 주는 프록시가 되지 않게 프로필의 iconUrl 만, 정해진 호스트·경로일 때만 받는다.
 //   Worker 쪽에는 저장하거나 캐시하지 않는다 (maishift 약관: SEGA 이미지 재호스팅 금지에 걸리지 않게).
 //
+// GET /api/firmware/manifest.json
+// GET /api/firmware/{env}/carol-keyring-{env}-{버전}.bin
+//   R2 버킷(FIRMWARE)에 올린 펌웨어. 웹 배포와 따로 pnpm firmware:release 로 올린다 (src/firmwareStore.ts).
+//   manifest 는 매번 새로 확인하게 하고, .bin 은 이름에 버전이 들어가고 한 번 올리면 바뀌지 않으니 오래 캐시한다.
+//
 // 오류는 { "error": "<사용자에게 보여 줄 문장>" } 와 알맞은 HTTP 상태로 돌려준다.
 
+import { FIRMWARE_API_PREFIX, MANIFEST_KEY, parseFirmwareKey } from '../src/firmwareStore.ts';
 import { ICON_MAX_BYTES, isAllowedIconUrl } from '../src/iconUrl.ts';
 import type { ProfileResponse, Region } from '../src/maishift.ts';
 
@@ -103,10 +109,40 @@ async function getIcon(data: ProfileResponse): Promise<Response> {
   });
 }
 
+async function getFirmware(key: string, request: Request, env: WorkerEnv): Promise<Response> {
+  const isManifest = key === MANIFEST_KEY;
+  if (!isManifest && !parseFirmwareKey(key)) return error(404, '없는 펌웨어 파일입니다.');
+
+  const object = await env.FIRMWARE.get(key, { onlyIf: request.headers });
+  if (!object) return error(404, isManifest ? '아직 배포한 펌웨어가 없습니다.' : '없는 펌웨어 파일입니다.');
+
+  const headers = new Headers({ etag: object.httpEtag, 'x-content-type-options': 'nosniff' });
+  if (isManifest) {
+    headers.set('content-type', 'application/json; charset=utf-8');
+    headers.set('cache-control', 'no-cache');
+  } else {
+    headers.set('content-type', 'application/octet-stream');
+    headers.set('cache-control', 'public, max-age=31536000, immutable');
+  }
+  // If-None-Match 가 맞으면 body 없이 돌아온다.
+  if (!('body' in object)) return new Response(null, { status: 304, headers });
+  headers.set('content-length', String(object.size));
+  return new Response(object.body, { headers });
+}
+
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== 'GET') return error(405, 'GET 만 지원합니다.', { allow: 'GET' });
+
+    if (url.pathname.startsWith(FIRMWARE_API_PREFIX)) {
+      try {
+        return await getFirmware(url.pathname.slice(FIRMWARE_API_PREFIX.length), request, env);
+      } catch (cause) {
+        console.error('firmware', cause);
+        return error(502, '펌웨어 저장소에 연결하지 못했습니다.');
+      }
+    }
 
     const match = /^\/api\/profile\/([^/]+)(\/icon)?$/.exec(url.pathname);
     if (!match) return error(404, '없는 API 입니다.');

@@ -1,11 +1,8 @@
-// 보낼 수 있는 화면 목록.
-// profile: 프로필 화면 (maishift 연동 전이라 샘플 데이터). 그릴 프로필은 따로 넘긴다.
+// 패널 점검용 화면 (기기 설정 → 패널 점검, 개발자 모드).
 // test: 회전 방향(화살표), 보이는 영역(테두리, 눈금), 색(팔레트 막대)을 한 화면에서 본다.
+// solid:<색>: 패널 전체를 한 색으로.
 // 색은 기기가 알려 준 패널 팔레트에서만 고른다 (브랜드 색이 아니라 패널이 낼 수 있는 색이다).
 
-import type { PlayerProfile } from './maishift.ts';
-import { drawProfile } from './profileLayout.ts';
-import type { IconImage } from './profileLayout.ts';
 import type { DeviceInfo, PaletteColor } from './protocol.ts';
 
 export interface PatternOption {
@@ -14,8 +11,6 @@ export interface PatternOption {
   /** 고를 때 보여 줄 설명 */
   help: string;
 }
-
-export const PROFILE_PATTERN = 'profile';
 
 const PALETTE_LABELS: Record<string, string> = {
   black: '검정',
@@ -32,11 +27,6 @@ export function colorLabel(name: string): string {
 
 export function patternOptions(palette: PaletteColor[]): PatternOption[] {
   return [
-    {
-      id: PROFILE_PATTERN,
-      label: '프로필',
-      help: 'maishift 에서 받은 프로필을 그립니다. 핸들을 넣기 전에는 샘플로 볼 수 있습니다.',
-    },
     {
       id: 'test',
       label: '테스트 패턴',
@@ -57,18 +47,9 @@ export function drawPattern(
   palette: PaletteColor[],
   id: string,
   info: DeviceInfo,
-  /** id 가 profile 일 때 그릴 프로필 */
-  profile?: PlayerProfile,
-  /** 프로필 아이콘 이미지 */
-  icon?: IconImage | null,
 ): void {
   const color = (name: string) => palette.find((p) => p.name === name)?.rgb ?? palette[0].rgb;
   ctx.imageSmoothingEnabled = false;
-
-  if (id === PROFILE_PATTERN && profile) {
-    drawProfile(ctx, width, height, palette, profile, { icon });
-    return;
-  }
 
   if (id.startsWith('solid:')) {
     ctx.fillStyle = color(id.slice('solid:'.length));

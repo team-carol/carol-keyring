@@ -5,9 +5,6 @@ dist/
 .env
 .env.*
 
-# pnpm firmware:publish 가 만드는 배포용 펌웨어 (빌드 결과물)
-web/public/firmware/
-
 # Cloudflare Worker 로컬 비밀값 (API 키). 예시는 .dev.vars.example
 .dev.vars*
 !.dev.vars.example

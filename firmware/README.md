@@ -78,13 +78,19 @@ src/
 ### 새 버전 배포
 
 1. `platformio.ini` 의 `FW_VERSION` 을 올린다 (`x.y.z` 숫자만. 웹이 이 값으로 새 버전인지 비교한다).
-2. `pio run -e seeed213_bwry` 로 빌드한다.
-3. 저장소 루트에서 `pnpm firmware:publish` 를 실행한다. 빌드된 env 마다 `web/public/firmware/<env>/` 에 .bin 을 복사하고
-   `web/public/firmware/manifest.json` 에 버전, 크기, SHA-256 을 적는다. 특정 env 만 올리려면 `pnpm firmware:publish seeed213_bwry`.
-4. 웹을 배포한다 (`pnpm cf:deploy`. 펌웨어도 웹 정적 파일에 같이 들어간다). 웹과 같은 주소라 CORS 설정이 필요 없다.
+2. 저장소 루트에서 `pnpm firmware:release seeed213_bwry --remote` 를 실행한다. 여러 env 를 한 번에 적어도 된다.
+   - pio 로 빌드하고, 펌웨어 안의 버전·빌드 표시를 확인한다.
+   - R2 버킷 `carol-keyring-firmware` 에 올라가 있는 버전보다 높을 때만 `<env>/carol-keyring-<env>-<버전>.bin` 을 올리고,
+     맨 마지막에 `manifest.json` (버전, 크기, SHA-256) 을 바꾼다. 같은 버전을 다른 내용으로 다시 올리지는 않는다.
+   - 웹 배포(`pnpm cf:deploy`)는 필요 없다. 올리자마자 웹이 Worker 의 `/api/firmware/` 로 새 버전을 본다.
+3. `--remote` 를 빼면 로컬(`pnpm dev` 가 쓰는 R2)에 올린다. 배포 전에 업데이트를 시험할 때 쓴다.
+
+처음 한 번은 `pnpm --filter web exec wrangler login` 과
+`pnpm --filter web exec wrangler r2 bucket create carol-keyring-firmware` 가 필요하다.
 
 웹은 키링의 Info `build` 와 같은 env 의 펌웨어만 보고, 받은 파일의 크기·SHA-256·안의 버전 표시가 manifest 와 맞을 때만 보낸다.
-`web/public/firmware/` 는 빌드 결과물이라 git 에 넣지 않는다.
+예전 버전 파일은 지우지 않고 R2 에 기록으로 남긴다. 웹은 키링보다 새 버전만 권하므로, 문제가 있는 버전을 냈으면
+고친 펌웨어를 더 높은 버전으로 다시 낸다.
 
 - 펌웨어 자리(OTA 파티션)가 두 개 필요해서 `board_build.partitions = default.csv` 를 쓴다 (app0/app1 각 1.25MB).
 - 새 펌웨어는 처음 켜졌을 때 BLE 광고까지 올라와야 스스로 정상으로 표시한다. 30초 안에 못 하면 이전 펌웨어로 돌아간다.

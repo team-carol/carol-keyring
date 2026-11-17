@@ -1,16 +1,32 @@
 // Cloudflare Worker 하나로 웹(정적 파일)과 API 를 같이 내보낸다.
 // - /api/*  : worker/index.ts 가 처리한다 (maishift 호출, API 키는 비밀값)
 // - 그 밖   : vite build 결과(web/dist)를 그대로 내보낸다. 없는 경로는 index.html (한 페이지 앱)
+// - 펌웨어  : R2 버킷(FIRMWARE)에 따로 올리고 /api/firmware/ 로 내려준다. 웹 배포와 상관없이 pnpm firmware:release 로 올린다.
+//             처음 한 번 버킷을 만든다: pnpm --filter web exec wrangler r2 bucket create carol-keyring-firmware
 // 개발은 pnpm dev (Vite 플러그인이 Worker 도 같이 띄운다), 배포는 pnpm cf:deploy.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "carol-keyring",
   "main": "worker/index.ts",
+  "account_id": "d8f3a4e20e2530c25e7f9704754afbf4",
   "compatibility_date": "2026-11-01",
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // team-carol.com 영역(zone)의 서브도메인에 붙인다. DNS 레코드와 인증서는 Cloudflare 가 만든다.
+  "routes": [
+    {
+      "pattern": "keyring.team-carol.com",
+      "custom_domain": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FIRMWARE",
+      "bucket_name": "carol-keyring-firmware"
+    }
+  ],
   "observability": {
     "enabled": true
   }

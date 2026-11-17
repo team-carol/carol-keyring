@@ -32,8 +32,9 @@ export function DeviceCard({ info, name, demo, devMode, onDisconnect }: DeviceCa
       <StatGrid className="kr-stats">
         <Stat label="화면" value={`${size.width}×${size.height}`} />
         <Stat label="색" value={`${info.palette.length}색`} />
+        {/* 보낼 때 진행 막대가 예상 시간을 보여 주니, 평소에는 숨긴다. */}
         {devMode ? <Stat label="한 장 크기" value={formatBytes(info.maxLen)} /> : null}
-        <Stat label="갱신 시간" value={`약 ${Math.round(info.refreshMs / 1000)}초`} />
+        {devMode ? <Stat label="갱신 시간" value={`약 ${Math.round(info.refreshMs / 1000)}초`} /> : null}
       </StatGrid>
 
       <ul className="kr-swatches" aria-label="패널 색">

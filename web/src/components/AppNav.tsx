@@ -43,8 +43,18 @@ function SettingsIcon() {
   );
 }
 
+function LayoutIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <rect x="3.5" y="5" width="17" height="14" rx="1.5" />
+      <path strokeLinecap="round" d="M3.5 11h17M10 11v8" />
+    </svg>
+  );
+}
+
 const ITEMS: { tab: Tab; label: string; href: string; icon: ReactNode }[] = [
   { tab: 'home', label: '홈', href: './', icon: <HomeIcon /> },
+  { tab: 'layout', label: '레이아웃', href: '#/layout', icon: <LayoutIcon /> },
   { tab: 'device', label: '기기 설정', href: '#/device', icon: <SettingsIcon /> },
 ];
 

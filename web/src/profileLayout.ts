@@ -1,15 +1,15 @@
-// 프로필 화면 그리기. 캔버스에 그린 뒤 encodeFrame 이 패널 팔레트로 줄인다.
-// 기본은 흑백이다. 빨강·노랑·초록·파랑이 다 있는 패널(6색)에서만 레이팅 판에 게임 색을 넣는다.
-// 4색(흑백적황)으로는 레이팅 11단계를 나눌 수 없고, 억지로 넣으면 산만해서 흑백으로 둔다.
+// 프로필 화면 그리기. 레이아웃(layout.ts)에 적힌 항목을 차례로 그린다. 캔버스에 그린 뒤 encodeFrame 이 패널 팔레트로 줄인다.
+// 기본은 흑백이고 색은 아이콘(디더링)에만 쓴다. 빨강·노랑·초록·파랑이 다 있는 패널(6색)에서만 레이팅 판에 게임 색을 넣는다.
 // 글자는 굵게 그리고 한 색으로 찍어서 또렷하게 한다.
-//
-// 가로로 긴 화면(2.13" 250×122)과 정사각형에 가까운 화면(1.54" 240×240) 두 가지 배치가 있다.
+// 레이아웃 크기와 패널 크기가 다르면 비율을 지켜 줄이거나 키우고 가운데에 놓는다.
 
 import { fontFamily } from '@team-carol/design-system';
 
+import { ditherToPalette, enhanceForPanel } from './dither.ts';
+import { DEFAULT_LAYOUT } from './layout.ts';
+import type { Layout, LayoutElement } from './layout.ts';
 import { courseRankLabel, ratingTier } from './maishift.ts';
 import type { PlayerProfile, RatingTier } from './maishift.ts';
-import { ditherToPalette, enhanceForPanel } from './dither.ts';
 import type { PaletteColor } from './protocol.ts';
 
 /** 아이콘으로 그릴 수 있는 이미지 */
@@ -24,8 +24,8 @@ interface Rect {
   h: number;
 }
 
-/** 칸 모양. outline: 흰 바탕 + 검정 테두리, solid: 검정 바탕 + 흰 글자 */
-type Box = 'outline' | 'solid';
+/** 칸 모양. none: 칸 없음, outline: 흰 바탕 + 검정 테두리, solid: 검정 바탕 + 흰 글자 */
+type Box = LayoutElement['box'];
 
 interface Ink {
   black: string;
@@ -136,6 +136,7 @@ function strokeRect(ctx: Ctx, r: Rect, color: string, width = 1) {
 
 /** 칸을 칠하고 그 안에 쓸 글자색을 돌려준다. */
 function box(ctx: Ctx, r: Rect, kind: Box, ink: Ink, border = 1): string {
+  if (kind === 'none') return ink.black;
   if (kind === 'solid') {
     fillRect(ctx, r, ink.black);
     return ink.white;
@@ -235,16 +236,16 @@ function ditheredIcon(ctx: Ctx, r: Rect, image: IconImage, ink: Ink) {
   ctx.putImageData(pixels, r.x, r.y);
 }
 
-/** 아이콘 칸. 이미지가 없으면 이름 첫 글자를 넣는다. */
-function icon(ctx: Ctx, r: Rect, profile: PlayerProfile, image: IconImage | null, ink: Ink) {
-  const border = Math.max(1, Math.round(r.w / 40));
+/** 아이콘 칸. 이미지가 없으면 이름 첫 글자를 넣는다. 칸 모양이 none 이어도 테두리는 그리지 않을 뿐 그림은 그린다. */
+function icon(ctx: Ctx, r: Rect, el: LayoutElement, profile: PlayerProfile, image: IconImage | null, ink: Ink, s: number) {
+  const border = Math.max(1, Math.round(el.border * s));
   if (image) {
     ditheredIcon(ctx, r, image, ink);
-    strokeRect(ctx, r, ink.black, border);
+    if (el.box !== 'none') strokeRect(ctx, r, ink.black, border);
     return;
   }
-  const fg = box(ctx, r, 'outline', ink, border);
-  ctx.font = font(Math.round(r.h * 0.55));
+  const fg = box(ctx, r, el.box, ink, border);
+  ctx.font = font(Math.round(Math.min(r.w, r.h) * 0.55));
   text(ctx, Array.from(displayText(profile.name))[0] ?? '?', r.x + r.w / 2, r.y + r.h / 2 + 1, fg, 'center');
 }
 
@@ -258,27 +259,60 @@ function formatNumber(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-/** 이름표 칸 (단위, 클래스). 왼쪽에 작은 이름, 오른쪽에 값. */
-function chip(ctx: Ctx, r: Rect, label: string, value: string, kind: Box, size: number, ink: Ink) {
-  const fg = box(ctx, r, kind, ink);
-  setLabelFont(ctx, Math.max(9, Math.round(size * 0.6)));
-  const labelWidth = ctx.measureText(label).width;
-  text(ctx, label, r.x + 4, r.y + r.h / 2, fg);
-  ctx.letterSpacing = '0px';
-  const fit = fitText(ctx, value, r.w - 8 - labelWidth - 6, size, Math.round(size * 0.7));
-  ctx.font = font(fit.size);
-  text(ctx, fit.text, r.x + r.w - 4, r.y + r.h / 2 + 1, fg, 'right');
+/** 글자 한 줄 항목 (이름, 칭호, 별, 플레이 수, 날짜, 직접 쓴 글) 이 그릴 글 */
+function lineText(el: LayoutElement, p: PlayerProfile): string {
+  switch (el.kind) {
+    case 'name':
+      return displayText(p.name);
+    case 'title':
+      return displayText(p.title.text);
+    case 'stars':
+      return `★ ${formatNumber(p.stars)}`;
+    case 'plays':
+      return p.playCount ? `▶ ${formatNumber(p.playCount.total)}` : '';
+    case 'synced':
+      return syncDate(p.syncedAt);
+    case 'text':
+      return el.text ?? '';
+    default:
+      return '';
+  }
 }
 
-/** 칭호 판 */
-function titlePlate(ctx: Ctx, r: Rect, value: string, size: number, minSize: number, ink: Ink) {
-  const fg = box(ctx, r, 'outline', ink);
-  const fit = fitText(ctx, displayText(value), r.w - 8, size, minSize);
-  ctx.font = font(fit.size);
-  text(ctx, fit.text, r.x + r.w / 2, r.y + r.h / 2 + 1, fg, 'center');
+function textX(r: Rect, align: LayoutElement['align'], inset: number): number {
+  return align === 'left' ? r.x + inset : align === 'right' ? r.x + r.w - inset : r.x + r.w / 2;
 }
 
-/** 글자마다 색을 바꿔 찍는다 (무지개 레이팅). */
+/** 글자 한 줄. 칸에 안 들어가면 글자를 줄이고, 그래도 넘치면 뒤를 … 으로 자른다. */
+function line(ctx: Ctx, r: Rect, el: LayoutElement, value: string, ink: Ink, s: number) {
+  const fg = box(ctx, r, el.box, ink, Math.max(1, Math.round(el.border * s)));
+  if (!value) return;
+  const inset = el.box === 'none' ? 0 : Math.round(4 * s);
+  const size = Math.max(6, Math.round(el.size * s));
+  const fit = fitText(ctx, value, r.w - inset * 2, size, Math.max(6, Math.round(size * 0.6)));
+  ctx.font = font(fit.size, el.kind === 'synced' ? 500 : 700);
+  text(ctx, fit.text, textX(r, el.align, inset), r.y + r.h / 2 + 1, fg, el.align);
+}
+
+/** 이름표 칸 (단위, 클래스). 이름표를 켜면 왼쪽에 작은 이름, 값은 정렬대로. */
+function chip(ctx: Ctx, r: Rect, el: LayoutElement, label: string, value: string, ink: Ink, s: number) {
+  const fg = box(ctx, r, el.box, ink, Math.max(1, Math.round(el.border * s)));
+  const inset = Math.round(4 * s);
+  const size = Math.max(6, Math.round(el.size * s));
+  let labelWidth = 0;
+  if (el.label) {
+    setLabelFont(ctx, Math.max(9, Math.round(size * 0.6)));
+    labelWidth = ctx.measureText(label).width + inset;
+    text(ctx, label, r.x + inset, r.y + r.h / 2, fg);
+    ctx.letterSpacing = '0px';
+  }
+  const fit = fitText(ctx, value, r.w - inset * 2 - labelWidth, size, Math.round(size * 0.7));
+  ctx.font = font(fit.size);
+  const valueRect = { ...r, x: r.x + labelWidth, w: r.w - labelWidth };
+  text(ctx, fit.text, textX(valueRect, el.align, inset), r.y + r.h / 2 + 1, fg, el.align);
+}
+
+/** 글자마다 색을 바꿔 찍는다 (6색 패널의 무지개 레이팅). */
 function cycleText(ctx: Ctx, value: string, x: number, y: number, colors: string[], align: CanvasTextAlign) {
   ctx.textAlign = 'left';
   const total = ctx.measureText(value).width;
@@ -290,104 +324,57 @@ function cycleText(ctx: Ctx, value: string, x: number, y: number, colors: string
   }
 }
 
-/** 레이팅 판: 큰 숫자. 6색 패널이면 레이팅 구간 색을 넣는다. */
-function ratingPlate(ctx: Ctx, r: Rect, rating: number, labelSize: number, size: number, border: number, ink: Ink) {
-  const style = ratingPlateStyle(ratingTier(rating), ink, border);
-  fillRect(ctx, r, style.bg);
+/** 레이팅 판: 이름표(RATING)를 위에, 큰 숫자를 아래에. 6색 패널이고 칸이 outline 이면 레이팅 구간 색을 넣는다. */
+function rating(ctx: Ctx, r: Rect, el: LayoutElement, value: number, ink: Ink, s: number) {
+  const border = Math.max(1, Math.round(el.border * s));
+  const style: Plate =
+    el.box === 'outline'
+      ? ratingPlateStyle(ratingTier(value), ink, border)
+      : el.box === 'solid'
+        ? { bg: ink.black, fg: ink.white, border: 0 }
+        : { bg: '', fg: ink.black, border: 0 };
+  if (style.bg) fillRect(ctx, r, style.bg);
   if (style.frame) strokeRect(ctx, r, style.frame.color, style.frame.width);
   if (style.border > 0) strokeRect(ctx, r, ink.black, style.border);
-  const inset = Math.max(style.border, style.frame?.width ?? 0);
+  const inset = Math.max(style.border, style.frame?.width ?? 0) + Math.round(4 * s);
 
-  setLabelFont(ctx, labelSize);
-  text(ctx, 'RATING', r.x + inset + 4, r.y + inset + 4 + labelSize / 2, style.fg);
-  ctx.letterSpacing = '0px';
-  ctx.font = font(size);
-  const x = r.x + r.w / 2;
-  const y = r.y + r.h / 2 + labelSize / 2;
-  if (style.cycle) cycleText(ctx, String(rating), x, y, style.cycle, 'center');
-  else text(ctx, String(rating), x, y, style.fg, 'center');
+  const size = Math.max(6, Math.round(el.size * s));
+  const labelSize = Math.max(9, Math.round(size * 0.28));
+  const labelH = el.label ? labelSize : 0;
+  if (el.label) {
+    setLabelFont(ctx, labelSize);
+    text(ctx, 'RATING', r.x + inset, r.y + inset + labelSize / 2, style.fg);
+    ctx.letterSpacing = '0px';
+  }
+  const fit = fitText(ctx, String(value), r.w - inset * 2, size, Math.round(size * 0.6));
+  ctx.font = font(fit.size);
+  const x = textX(r, el.align, inset);
+  const y = r.y + r.h / 2 + labelH / 2;
+  if (style.cycle) cycleText(ctx, fit.text, x, y, style.cycle, el.align);
+  else text(ctx, fit.text, x, y, style.fg, el.align);
 }
 
 export interface ProfileDrawOptions {
   /** 아이콘 이미지. 없으면 이름 첫 글자로 대신한다. */
   icon?: IconImage | null;
+  /** 그릴 레이아웃. 없으면 기본 레이아웃. */
+  layout?: Layout;
 }
 
-/** 2.13" 250×122 처럼 가로로 긴 화면. 위: 아이콘·이름·칭호, 아래: 레이팅·단위·클래스 */
-function drawWide(ctx: Ctx, w: number, h: number, p: PlayerProfile, ink: Ink, image: IconImage | null) {
-  const s = Math.min(w / 250, h / 122);
-  const u = (n: number) => Math.round(n * s);
-  const pad = u(4);
-
-  const iconBox = { x: pad, y: pad, w: u(54), h: u(54) };
-  icon(ctx, iconBox, p, image, ink);
-
-  const colX = iconBox.x + iconBox.w + u(6);
-  const colW = w - colX - pad;
-
-  const name = fitText(ctx, displayText(p.name), colW, u(20), u(12));
-  ctx.font = font(name.size);
-  text(ctx, name.text, colX, pad + u(12), ink.black);
-
-  titlePlate(ctx, { x: colX, y: pad + u(26), w: colW, h: u(17) }, p.title.text, u(11), u(9), ink);
-
-  const lineY = pad + u(52);
-  ctx.font = font(u(11));
-  const play = p.playCount ? `  ▶ ${formatNumber(p.playCount.total)}` : '';
-  text(ctx, `★ ${formatNumber(p.stars)}${play}`, colX, lineY, ink.black);
-  ctx.font = font(u(10), 500);
-  text(ctx, syncDate(p.syncedAt), w - pad, lineY, ink.black, 'right');
-
-  const bottomY = iconBox.y + iconBox.h + u(4);
-  const bottomH = h - pad - bottomY;
-  const ratingBox = { x: pad, y: bottomY, w: u(140), h: bottomH };
-  ratingPlate(ctx, ratingBox, p.rating, u(9), u(32), u(2), ink);
-
-  const chipX = ratingBox.x + ratingBox.w + u(6);
-  const chipW = w - pad - chipX;
-  const chipH = Math.floor((bottomH - u(4)) / 2);
-  chip(ctx, { x: chipX, y: bottomY, w: chipW, h: chipH }, 'DAN', courseRankLabel(p.courseRank) ?? '-', 'solid', u(15), ink);
-  chip(ctx, { x: chipX, y: bottomY + bottomH - chipH, w: chipW, h: chipH }, 'CLASS', p.classRank, 'outline', u(15), ink);
-}
-
-/** 1.54" 240×240 처럼 정사각형에 가까운 화면 */
-function drawSquare(ctx: Ctx, w: number, h: number, p: PlayerProfile, ink: Ink, image: IconImage | null) {
-  const s = Math.min(w, h) / 240;
-  const u = (n: number) => Math.round(n * s);
-  const pad = u(8);
-
-  const iconBox = { x: pad, y: pad, w: u(72), h: u(72) };
-  icon(ctx, iconBox, p, image, ink);
-
-  const colX = iconBox.x + iconBox.w + u(8);
-  const colW = w - colX - pad;
-
-  const name = fitText(ctx, displayText(p.name), colW, u(24), u(14));
-  ctx.font = font(name.size);
-  text(ctx, name.text, colX, pad + u(14), ink.black);
-
-  titlePlate(ctx, { x: colX, y: pad + u(32), w: colW, h: u(20) }, p.title.text, u(13), u(10), ink);
-
-  ctx.font = font(u(13));
-  text(ctx, `★ ${formatNumber(p.stars)}`, colX, pad + u(64), ink.black);
-
-  const ratingBox = { x: pad, y: iconBox.y + iconBox.h + u(8), w: w - pad * 2, h: u(76) };
-  ratingPlate(ctx, ratingBox, p.rating, u(11), u(46), u(3), ink);
-
-  const chipY = ratingBox.y + ratingBox.h + u(8);
-  const chipW = Math.floor((w - pad * 2 - u(8)) / 2);
-  const chipH = u(36);
-  chip(ctx, { x: pad, y: chipY, w: chipW, h: chipH }, 'DAN', courseRankLabel(p.courseRank) ?? '-', 'solid', u(17), ink);
-  chip(ctx, { x: w - pad - chipW, y: chipY, w: chipW, h: chipH }, 'CLASS', p.classRank, 'outline', u(17), ink);
-
-  const footY = h - pad - u(8);
-  ctx.font = font(u(12));
-  const play = p.playCount
-    ? `▶ ${formatNumber(p.playCount.total)} (이번 버전 ${formatNumber(p.playCount.current)})`
-    : '';
-  text(ctx, play, pad, footY, ink.black);
-  ctx.font = font(u(11), 500);
-  text(ctx, syncDate(p.syncedAt), w - pad, footY, ink.black, 'right');
+/** 레이아웃 좌표 → 캔버스 좌표. 비율을 지켜 맞추고 가운데에 놓는다. */
+export function layoutTransform(layout: Layout, width: number, height: number) {
+  const s = Math.min(width / layout.w, height / layout.h);
+  const offsetX = Math.round((width - layout.w * s) / 2);
+  const offsetY = Math.round((height - layout.h * s) / 2);
+  return {
+    s,
+    rect: (el: Pick<LayoutElement, 'x' | 'y' | 'w' | 'h'>): Rect => ({
+      x: offsetX + Math.round(el.x * s),
+      y: offsetY + Math.round(el.y * s),
+      w: Math.max(1, Math.round(el.w * s)),
+      h: Math.max(1, Math.round(el.h * s)),
+    }),
+  };
 }
 
 export function drawProfile(
@@ -402,13 +389,35 @@ export function drawProfile(
   ctx.fillStyle = ink.white;
   ctx.fillRect(0, 0, width, height);
   const image = options.icon ?? null;
-  if (width / height >= 1.5) drawWide(ctx, width, height, profile, ink, image);
-  else drawSquare(ctx, width, height, profile, ink, image);
+  const layout = options.layout ?? DEFAULT_LAYOUT;
+  const { s, rect } = layoutTransform(layout, width, height);
+
+  // 목록 순서대로 그린다 (뒤에 있는 항목이 위에 그려진다).
+  for (const el of layout.elements) {
+    const r = rect(el);
+    switch (el.kind) {
+      case 'icon':
+        icon(ctx, r, el, profile, image, ink, s);
+        break;
+      case 'rating':
+        rating(ctx, r, el, profile.rating, ink, s);
+        break;
+      case 'dan':
+        chip(ctx, r, el, 'DAN', courseRankLabel(profile.courseRank) ?? '-', ink, s);
+        break;
+      case 'class':
+        chip(ctx, r, el, 'CLASS', profile.classRank, ink, s);
+        break;
+      default:
+        line(ctx, r, el, lineText(el, profile), ink, s);
+    }
+  }
 }
 
+
 /** 캔버스는 글꼴이 다 받아지기 전에 그리면 대체 글꼴로 그린다. 프로필 글자에 필요한 글꼴을 먼저 받는다. */
-export async function loadProfileFonts(profile: PlayerProfile): Promise<void> {
-  const sample = `${displayText(profile.name)}${displayText(profile.title.text)}${courseRankLabel(profile.courseRank) ?? ''}RATING CLASS DAN ★▶0123456789.,`;
+export async function loadProfileFonts(profile: PlayerProfile, extraText = ''): Promise<void> {
+  const sample = `${displayText(profile.name)}${displayText(profile.title.text)}${courseRankLabel(profile.courseRank) ?? ''}RATING CLASS DAN ★▶0123456789.,${extraText}`;
   await Promise.all(
     [700, 500].flatMap((weight) =>
       ['Pretendard', 'Noto Sans JP'].map((family) =>

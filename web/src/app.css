@@ -474,3 +474,100 @@ html {
     font-size: 16px;
   }
 }
+
+/* ---- 레이아웃 편집 ---- */
+
+/* 미리보기 위에 같은 크기로 겹친 칸들. 칸을 끌어서 옮기고 모서리를 끌어서 크기를 바꾼다. */
+.kr-editor__stage {
+  position: relative;
+}
+.kr-editor__overlay {
+  position: absolute;
+  inset: 0;
+}
+.kr-editor__item {
+  position: absolute;
+  padding: 0;
+  border: 1px dashed transparent;
+  background: none;
+  cursor: move;
+  /* 끄는 동안 화면이 같이 스크롤되지 않게 한다. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.kr-editor__item:hover {
+  border-color: color-mix(in srgb, var(--crl-accent) 60%, transparent);
+}
+.kr-editor__item.is-active {
+  border: 2px solid var(--crl-accent);
+  background: color-mix(in srgb, var(--crl-accent) 12%, transparent);
+}
+.kr-editor__item:focus-visible {
+  outline: 2px solid var(--crl-focus);
+  outline-offset: 1px;
+}
+/* 크기 손잡이. 보이는 점은 작지만 누르는 영역은 넓힌다. */
+.kr-editor__handle {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--crl-radius-pill);
+  background: var(--crl-accent);
+  box-shadow: 0 0 0 2px var(--crl-canvas);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.kr-editor__handle::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+
+/* 항목 고르기 칩 */
+.kr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--crl-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kr-chip-btn {
+  min-height: 36px;
+  padding-inline: var(--crl-space-4);
+  border: 1px solid var(--crl-border);
+  font: inherit;
+  font-size: var(--crl-type-label-size);
+  cursor: pointer;
+}
+.kr-chip-btn.is-active {
+  border-color: var(--crl-accent);
+  color: var(--crl-accent-soft);
+}
+
+/* 숫자 입력 칸 여러 개를 격자로 */
+.kr-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--crl-space-4);
+}
+
+/* 안내 문장 안의 글자 버튼 (되돌리기, 닫기) */
+.kr-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--crl-weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* 공유 링크로 레이아웃을 받았을 때의 안내 (모든 탭 위) */
+.kr-shared {
+  margin-bottom: var(--crl-space-5);
+}

@@ -1,8 +1,9 @@
 // 배포된 펌웨어 찾기. DOM 없이 Node 테스트에서도 쓴다.
 //
-// 웹과 같은 곳에 firmware/manifest.json 과 .bin 을 함께 올린다 (pnpm firmware:publish 가 만든다).
-// 같은 출처라 CORS 설정이 필요 없다.
+// 펌웨어는 R2 에 두고 Worker 가 /api/firmware/ 아래로 내려준다 (pnpm firmware:release 가 올린다).
+// 웹과 같은 출처라 CORS 설정이 필요 없다.
 
+import { FIRMWARE_API_PREFIX, MANIFEST_KEY, compareVersions, parseVersion } from './firmwareStore.ts';
 import { parseFirmware } from './protocol.ts';
 import type { DeviceInfo } from './protocol.ts';
 
@@ -22,24 +23,10 @@ export interface FirmwareManifest {
   builds: Record<string, Omit<FirmwareRelease, 'build'>>;
 }
 
-export const MANIFEST_PATH = 'firmware/manifest.json';
+/** 페이지 주소 기준 상대 경로 (api/firmware/manifest.json). manifest 의 file 은 이 주소 기준으로 푼다. */
+export const MANIFEST_PATH = `${FIRMWARE_API_PREFIX.slice(1)}${MANIFEST_KEY}`;
 
-/** "1.2.3" → [1, 2, 3]. 그 밖의 모양("demo", "1.2.3-rc")은 null. */
-export function parseVersion(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-}
-
-/** a 가 b 보다 새로우면 양수. 둘 중 하나라도 버전 모양이 아니면 null. */
-export function compareVersions(a: string, b: string): number | null {
-  const va = parseVersion(a);
-  const vb = parseVersion(b);
-  if (!va || !vb) return null;
-  for (let i = 0; i < 3; i++) {
-    if (va[i] !== vb[i]) return va[i] - vb[i];
-  }
-  return 0;
-}
+export { compareVersions, parseVersion };
 
 /** 기기보다 새 펌웨어가 있으면 돌려준다. 빌드가 같은 것만 본다. */
 export function findUpdate(manifest: FirmwareManifest, info: DeviceInfo): FirmwareRelease | null {

@@ -1,0 +1,58 @@
+# 펌웨어 배포: fw-v<버전> 태그를 올리면 빌드해서 R2 에 올리고 manifest 를 바꾼다 (pnpm firmware:release --remote).
+#   1. firmware/platformio.ini 의 FW_VERSION 을 올리고 main 에 커밋
+#   2. git tag fw-v0.1.1 && git push origin fw-v0.1.1
+# 태그의 버전과 FW_VERSION 이 다르면 멈춘다.
+# 필요한 저장소 비밀값: CLOUDFLARE_API_TOKEN (R2 만 쓰는 토큰: Account → Workers R2 Storage → Edit).
+name: 펌웨어 배포
+
+on:
+  push:
+    tags: ['fw-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-firmware
+  cancel-in-progress: false
+
+env:
+  # 배포할 빌드(platformio.ini 의 env). 여러 개면 공백으로 띄운다.
+  FIRMWARE_ENVS: seeed213_bwry
+
+jobs:
+  release:
+    name: 빌드·R2 업로드
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 태그와 FW_VERSION 확인
+        run: |
+          tag="${GITHUB_REF_NAME#fw-v}"
+          fw="$(grep -oP 'FW_VERSION=\\"\K[0-9]+\.[0-9]+\.[0-9]+' firmware/platformio.ini)"
+          echo "태그 $tag, FW_VERSION $fw"
+          if [ "$tag" != "$fw" ]; then
+            echo "::error::태그(fw-v$tag)와 platformio.ini 의 FW_VERSION($fw)이 다릅니다."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio==6.2.0
+
+      - run: pnpm firmware:release $FIRMWARE_ENVS --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

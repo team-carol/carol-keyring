@@ -6,14 +6,20 @@ import { ConnectCard } from './components/ConnectCard.tsx';
 import { DevModeCard } from './components/DevModeCard.tsx';
 import { DeviceCard } from './components/DeviceCard.tsx';
 import { FirmwareCard } from './components/FirmwareCard.tsx';
+import { LayoutEditor } from './components/LayoutEditor.tsx';
+import { LayoutShareCard } from './components/LayoutShareCard.tsx';
 import { LogCard } from './components/LogCard.tsx';
-import { ScreenCard } from './components/ScreenCard.tsx';
+import { Notice } from './components/Notice.tsx';
+import { PanelCheckCard } from './components/PanelCheckCard.tsx';
+import { ProfileCard } from './components/ProfileCard.tsx';
 import { TransferCard } from './components/TransferCard.tsx';
-import { demoFromLocation } from './demo.ts';
+import { DEFAULT_DEMO, DEMO_INFO, demoFromLocation } from './demo.ts';
 import { KeyringDevice } from './device.ts';
 import type { DeviceEvents } from './device.ts';
 import { useFirmwareRelease } from './useFirmwareRelease.ts';
+import { useLayout } from './useLayout.ts';
 import { useLog } from './useLog.ts';
+import { useProfile } from './useProfile.ts';
 import { useSettings } from './useSettings.ts';
 import { useTab } from './useTab.ts';
 import type { Tab } from './useTab.ts';
@@ -23,6 +29,7 @@ const DEFAULT_CHUNK = 180;
 
 const TITLES: Record<Tab, string> = {
   home: '캐롤 키링',
+  layout: '레이아웃 · 캐롤 키링',
   device: '기기 설정 · 캐롤 키링',
 };
 
@@ -38,9 +45,14 @@ export function App() {
   const { devMode } = settings;
   const { tab, navigate } = useTab();
 
+  // maishift 프로필 (홈과 레이아웃 편집이 같이 쓴다), 레이아웃 (공유 링크로 받으면 적용)
+  const onHandleSaved = useCallback((handle: string) => updateSettings({ handle }), [updateSettings]);
+  const profile = useProfile(settings.handle, onHandleSaved, log);
+  const { layout, setLayout, shared, dismissShared, undoShared } = useLayout();
+
   // 탭을 바꾸면 맨 위로 올리고, 화면 읽기 프로그램이 새 화면 제목부터 읽도록 제목에 초점을 옮긴다.
   // 처음 열 때는 옮기지 않는다.
-  const headingRefs = useRef<Record<Tab, HTMLHeadingElement | null>>({ home: null, device: null });
+  const headingRefs = useRef<Record<Tab, HTMLHeadingElement | null>>({ home: null, layout: null, device: null });
   // 처음 열 때와 개발 모드(StrictMode)에서 effect 가 두 번 돌 때는 탭이 그대로라 옮기지 않는다.
   const shownTab = useRef(tab);
   useEffect(() => {
@@ -114,8 +126,30 @@ export function App() {
         </span>
       </TopBar>
 
-      {/* 두 탭을 모두 그려 두고 안 보이는 쪽만 숨긴다. 펌웨어 업데이트나 전송 중에 탭을 옮겨도 멈추지 않는다. */}
+      {/* 탭을 모두 그려 두고 안 보이는 쪽만 숨긴다. 펌웨어 업데이트나 전송 중에 탭을 옮겨도 멈추지 않는다. */}
       <main className="crl-container crl-container--narrow kr-main">
+        {shared ? (
+          <div className="kr-shared">
+            {shared.kind === 'applied' ? (
+              <Notice tone="success">
+                공유받은 레이아웃을 적용했습니다.{' '}
+                <button type="button" className="kr-link-btn" onClick={undoShared}>
+                  되돌리기
+                </button>{' '}
+                <button type="button" className="kr-link-btn" onClick={dismissShared}>
+                  닫기
+                </button>
+              </Notice>
+            ) : (
+              <Notice tone="danger">
+                공유 링크를 열지 못했습니다: {shared.message}{' '}
+                <button type="button" className="kr-link-btn" onClick={dismissShared}>
+                  닫기
+                </button>
+              </Notice>
+            )}
+          </div>
+        ) : null}
         <section className="kr-page" hidden={tab !== 'home'} aria-labelledby="kr-title-home">
           <header className="kr-hero">
             <p className="crl-eyebrow">maimai DX 프로필 키링</p>
@@ -130,7 +164,7 @@ export function App() {
               키링 화면 보내기
             </h1>
             <p className="crl-body-sm">
-              키링을 USB-C 단자에 꽂으면 블루투스로 연결됩니다. 화면을 골라 보내면 전자잉크가 바뀝니다.
+              키링을 USB-C 단자에 꽂으면 블루투스로 연결됩니다. maishift 핸들을 넣으면 프로필 화면을 만들어 보냅니다.
             </p>
           </header>
 
@@ -158,17 +192,36 @@ export function App() {
             connectCard
           )}
 
-          {info ? (
-            <ScreenCard
-              key={info.panel}
-              info={info}
-              device={device}
-              log={log}
-              chunkSize={chunkSize}
-              savedHandle={settings.handle}
-              onHandleSaved={(handle) => updateSettings({ handle })}
-            />
-          ) : null}
+          {/* 기기가 없어도 2.13" 기준으로 미리 볼 수 있다 (보내기는 연결 뒤에). */}
+          <ProfileCard
+            key={(info ?? DEMO_INFO[DEFAULT_DEMO]).panel}
+            info={info ?? DEMO_INFO[DEFAULT_DEMO]}
+            device={device}
+            log={log}
+            chunkSize={chunkSize}
+            savedHandle={settings.handle}
+            profile={profile.state}
+            onLoad={(handle) => void profile.load(handle)}
+            layout={layout}
+          />
+        </section>
+
+        <section className="kr-page" hidden={tab !== 'layout'} aria-labelledby="kr-title-layout">
+          <header className="kr-hero">
+            <h1
+              id="kr-title-layout"
+              ref={(el) => {
+                headingRefs.current.layout = el;
+              }}
+              tabIndex={-1}
+              className="crl-heading-2 kr-page__title"
+            >
+              레이아웃
+            </h1>
+            <p className="crl-body-sm">키링 화면에 무엇을 어디에 둘지 정하고, 링크나 파일로 공유합니다.</p>
+          </header>
+          <LayoutEditor info={info} profile={profile.loaded} layout={layout} onChange={setLayout} />
+          <LayoutShareCard layout={layout} onChange={setLayout} />
         </section>
 
         <section className="kr-page" hidden={tab !== 'device'} aria-labelledby="kr-title-device">
@@ -208,6 +261,9 @@ export function App() {
 
           <DevModeCard devMode={devMode} onChange={(next) => updateSettings({ devMode: next })} />
 
+          {devMode && info ? (
+            <PanelCheckCard key={info.panel} info={info} device={device} log={log} chunkSize={chunkSize} />
+          ) : null}
           {devMode ? <TransferCard chunkSize={chunkSize} onChunkSizeChange={setChunkSize} /> : null}
           {devMode ? <LogCard entries={entries} /> : null}
         </section>
