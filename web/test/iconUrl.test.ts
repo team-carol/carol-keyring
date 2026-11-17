@@ -1,22 +1,30 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { iconFetchUrls, isAllowedIconUrl } from '../src/iconUrl.ts';
+import { carolIconUrl, iconId } from '../src/iconUrl.ts';
 
 const ENG = 'https://maimaidx-eng.com/maimai-mobile/img/Icon/84b923fa041a1354.png';
 const JP = 'https://maimaidx.jp/maimai-mobile/img/Icon/84b923fa041a1354.png';
 
-test('maimai DX NET 아이콘 경로만 받는다', () => {
-  assert.ok(isAllowedIconUrl(ENG));
-  assert.ok(isAllowedIconUrl(JP));
-  assert.ok(!isAllowedIconUrl('http://maimaidx-eng.com/maimai-mobile/img/Icon/84b923fa041a1354.png'));
-  assert.ok(!isAllowedIconUrl('https://example.com/maimai-mobile/img/Icon/84b923fa041a1354.png'));
-  assert.ok(!isAllowedIconUrl('https://maimaidx-eng.com/maimai-mobile/home/'));
-  assert.ok(!isAllowedIconUrl(`${ENG}?x=1`));
+test('SEGA 아이콘 주소에서 id 를 꺼낸다', () => {
+  assert.equal(iconId(ENG), '84b923fa041a1354');
+  assert.equal(iconId(JP), '84b923fa041a1354');
 });
 
-test('eng 아이콘은 jp 서버를 먼저, 원래 주소를 다음으로 시도한다', () => {
-  assert.deepEqual(iconFetchUrls(ENG), [JP, ENG]);
-  assert.deepEqual(iconFetchUrls(JP), [JP]);
-  assert.deepEqual(iconFetchUrls('https://example.com/a.png'), []);
+test('다른 주소는 받지 않는다', () => {
+  for (const value of [
+    'http://maimaidx-eng.com/maimai-mobile/img/Icon/84b923fa041a1354.png',
+    'https://example.com/maimai-mobile/img/Icon/84b923fa041a1354.png',
+    'https://maimaidx-eng.com/maimai-mobile/home/',
+    'https://maimaidx-eng.com/maimai-mobile/img/Icon/84b923fa.png',
+    `${ENG}?x=1`,
+    'not a url',
+  ]) {
+    assert.equal(iconId(value), null, value);
+  }
+});
+
+test('캐롤봇 아이콘 API 주소를 만든다', () => {
+  assert.equal(carolIconUrl(ENG), 'https://maimai.team-carol.com/api/icon/84b923fa041a1354');
+  assert.equal(carolIconUrl('https://example.com/a.png'), null);
 });

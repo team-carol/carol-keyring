@@ -151,8 +151,8 @@ maishift `GET /api/v1/profiles/{handle}` 응답(`profile`)을 Worker(`/api/profi
 - 글자는 따로 그린 뒤 절반 넘게 칠해진 픽셀만 한 색으로 찍는다. 안티앨리어싱 중간색이 엉뚱한 패널 색으로 바뀌지 않게 한다.
 - 화면에서 색은 아이콘에만 쓴다. 아이콘은 가운데를 정사각형으로 잘라 칸 크기로 줄이고, 밝기 범위를 늘리고 중간 밝기를 조금 어둡게(감마 1.15) 한 뒤
   패널 색 전부(4색)로 오차 확산 디더링한다 (`dither.ts` 의 `enhanceForPanel`, `ditherToPalette`). 이미지가 없으면 이름 첫 글자.
-- 내 프로필은 게임 아이콘(`iconUrl`)을 Worker(`/api/profile/{handle}/icon`)로 받아 그린다. SEGA 서버에 CORS 헤더가 없어서 브라우저가 직접 읽지 못한다.
-  로컬 Worker 런타임은 그 서버와 TLS 연결이 끊겨서, 개발 서버에서는 Vite 의 `/__dev/icon` 이 대신 받는다 (`vite.config.ts`).
+- 게임 아이콘(`iconUrl`)은 캐롤봇의 아이콘 중계 API(`https://maimai.team-carol.com/api/icon/{id}`, CORS 허용)에서 받는다 (`iconUrl.ts`).
+  SEGA 서버는 CORS 헤더가 없어서 브라우저가 픽셀을 읽지 못하고, Cloudflare Worker 는 SEGA 서버에 연결이 안 된다 (배포 520).
 
 ## 레이아웃 편집과 공유
 

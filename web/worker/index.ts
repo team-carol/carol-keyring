@@ -1,14 +1,9 @@
-// carol-keyring Worker: /api/* 만 여기로 온다. 나머지(웹, 펌웨어 파일)는 정적 파일로 바로 나간다.
+// carol-keyring Worker: /api/* 만 여기로 온다. 나머지(웹)는 정적 파일로 바로 나간다.
 //
 // GET /api/profile/{handle}?region=intl
 //   maishift 의 공개 프로필을 대신 받아 준다. API 키는 브라우저에 보내지 않고 Worker 비밀값(MAISHIFT_API_KEY)으로 둔다.
 //   같은 프로필은 5분 동안 캐시해서 maishift 호출 한도(앱 전체 120, 초당 2 회복)를 아낀다.
-//
-// GET /api/profile/{handle}/icon?region=intl
-//   그 프로필의 아이콘 이미지를 그대로 넘겨 준다. 아이콘은 SEGA 서버(maimaidx-eng.com)에 있는데 CORS 헤더가 없어서
-//   브라우저가 픽셀을 읽지 못한다(4색 디더링을 못 한다). 같은 주소로 넘겨 주면 읽을 수 있다.
-//   아무 주소나 받아 주는 프록시가 되지 않게 프로필의 iconUrl 만, 정해진 호스트·경로일 때만 받는다.
-//   Worker 쪽에는 저장하거나 캐시하지 않는다 (maishift 약관: SEGA 이미지 재호스팅 금지에 걸리지 않게).
+//   아이콘은 Worker 가 SEGA 서버에 연결하지 못해서 브라우저가 캐롤봇 API 에서 받는다 (src/iconUrl.ts).
 //
 // GET /api/firmware/manifest.json
 // GET /api/firmware/{env}/carol-keyring-{env}-{버전}.bin
@@ -18,7 +13,6 @@
 // 오류는 { "error": "<사용자에게 보여 줄 문장>" } 와 알맞은 HTTP 상태로 돌려준다.
 
 import { FIRMWARE_API_PREFIX, MANIFEST_KEY, parseFirmwareKey } from '../src/firmwareStore.ts';
-import { ICON_MAX_BYTES, iconFetchUrls } from '../src/iconUrl.ts';
 import type { ProfileResponse, Region } from '../src/maishift.ts';
 
 type WorkerEnv = Env & {
@@ -93,37 +87,6 @@ async function loadProfile(
   return { data, cache: 'MISS' };
 }
 
-/** 후보 주소를 차례로 시도해서 처음 받은 응답. 모두 실패하면 마지막 실패 이유. */
-async function fetchIconUpstream(urls: string[]): Promise<Response | string> {
-  let reason = '';
-  for (const url of urls) {
-    try {
-      const response = await fetch(url, { headers: { 'user-agent': 'carol-keyring' } });
-      if (response.ok) return response;
-      reason = `HTTP ${response.status}`;
-    } catch (cause) {
-      reason = cause instanceof Error ? cause.message : String(cause);
-    }
-  }
-  return reason;
-}
-
-async function getIcon(data: ProfileResponse): Promise<Response> {
-  const urls = iconFetchUrls(data.profile.iconUrl);
-  if (urls.length === 0) return error(404, '받을 수 없는 아이콘 주소입니다.');
-
-  const upstream = await fetchIconUpstream(urls);
-  if (typeof upstream === 'string') return error(502, `아이콘을 받지 못했습니다 (${upstream}).`);
-  const type = upstream.headers.get('content-type') ?? '';
-  if (!type.startsWith('image/')) return error(502, '아이콘이 이미지가 아닙니다.');
-  const bytes = await upstream.arrayBuffer();
-  if (bytes.byteLength > ICON_MAX_BYTES) return error(502, '아이콘 파일이 너무 큽니다.');
-
-  return new Response(bytes, {
-    headers: { 'content-type': type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-  });
-}
-
 async function getFirmware(key: string, request: Request, env: WorkerEnv): Promise<Response> {
   const isManifest = key === MANIFEST_KEY;
   if (!isManifest && !parseFirmwareKey(key)) return error(404, '없는 펌웨어 파일입니다.');
@@ -170,7 +133,6 @@ export default {
     try {
       const result = await loadProfile(handle, region, env, ctx);
       if ('response' in result) return result.response;
-      if (match[2]) return await getIcon(result.data);
       return json(result.data, 200, { 'x-cache': result.cache });
     } catch (cause) {
       console.error('profile', cause);

@@ -34,7 +34,7 @@ export function useProfile(savedHandle: string, onHandleSaved: (handle: string) 
         let icon: ImageBitmap | null = null;
         let iconError: string | null = null;
         try {
-          icon = await fetchProfileIcon(trimmed, data.profile.iconUrl);
+          icon = await fetchProfileIcon(data.profile.iconUrl);
         } catch (cause) {
           iconError = cause instanceof Error ? cause.message : String(cause);
           log(`아이콘 받기 실패: ${iconError}`);
