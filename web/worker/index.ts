@@ -122,7 +122,7 @@ export default {
       }
     }
 
-    const match = /^\/api\/profile\/([^/]+)(\/icon)?$/.exec(url.pathname);
+    const match = /^\/api\/profile\/([^/]+)$/.exec(url.pathname);
     if (!match) return error(404, '없는 API 입니다.');
 
     const handle = decodeURIComponent(match[1]).trim();
