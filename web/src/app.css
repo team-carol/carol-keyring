@@ -396,8 +396,15 @@ html {
   scroll-padding-bottom: calc(var(--crl-space-5) + 64px);
 }
 
-.kr-status {
-  display: inline-flex;
+/* 카드 제목과 오른쪽 상태 표시 (기기 카드의 "연결됨") */
+.kr-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--crl-space-3);
+}
+.kr-card-head > .crl-tag {
+  flex: none;
 }
 
 .kr-setting {

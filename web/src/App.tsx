@@ -1,4 +1,4 @@
-import { Brand, Button, Card, CardBody, CardTitle, Footer, Tag, TopBar } from '@team-carol/design-system/react';
+import { Brand, Button, Card, CardBody, CardTitle, Footer, TopBar } from '@team-carol/design-system/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AppNav } from './components/AppNav.tsx';
@@ -114,17 +114,11 @@ export function App() {
     <div className="kr-app">
       <TopBar brand={<Brand name="캐롤 키링" href="./" />}>
         <AppNav variant="top" tab={tab} onNavigate={navigate} badges={badges} />
-        {/* 연결 상태가 바뀌면 화면 읽기 프로그램이 알려 준다. */}
-        <span role="status" className="kr-status">
-          {device ? (
-            <Tag tone="success">연결됨</Tag>
-          ) : demo ? (
-            <Tag tone="accent">미리보기</Tag>
-          ) : (
-            <Tag>연결 안 됨</Tag>
-          )}
-        </span>
       </TopBar>
+      {/* 연결 상태가 바뀌면 화면 읽기 프로그램이 알려 준다. 눈에 보이는 표시는 기기 카드 제목 옆에 있다. */}
+      <span role="status" className="kr-sr-only">
+        {device ? `${device.name} 연결됨` : demo ? '미리보기' : '키링 연결 안 됨'}
+      </span>
 
       {/* 탭을 모두 그려 두고 안 보이는 쪽만 숨긴다. 펌웨어 업데이트나 전송 중에 탭을 옮겨도 멈추지 않는다. */}
       <main className="crl-container crl-container--narrow kr-main">

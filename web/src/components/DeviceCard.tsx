@@ -1,4 +1,4 @@
-import { Button, Card, CardTitle, Stat, StatGrid } from '@team-carol/design-system/react';
+import { Button, Card, CardTitle, Stat, StatGrid, Tag } from '@team-carol/design-system/react';
 
 import { colorLabel } from '../patterns.ts';
 import { canvasSize } from '../protocol.ts';
@@ -21,12 +21,15 @@ export function DeviceCard({ info, name, demo, devMode, onDisconnect }: DeviceCa
   const size = canvasSize(info);
   return (
     <Card as="section" className="kr-stack">
-      <div>
-        <CardTitle>{name}</CardTitle>
-        <p className="crl-caption kr-subtitle">
-          펌웨어 {info.fw}
-          {devMode ? ` · ${info.panel} · 빌드 ${info.build ?? '알 수 없음'}` : null}
-        </p>
+      <div className="kr-card-head">
+        <div>
+          <CardTitle>{name}</CardTitle>
+          <p className="crl-caption kr-subtitle">
+            펌웨어 {info.fw}
+            {devMode ? ` · ${info.panel} · 빌드 ${info.build ?? '알 수 없음'}` : null}
+          </p>
+        </div>
+        {demo ? <Tag tone="accent">미리보기</Tag> : <Tag tone="success">연결됨</Tag>}
       </div>
 
       <StatGrid className="kr-stats">
